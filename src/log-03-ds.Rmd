@@ -1,0 +1,147 @@
+---
+title: "Data Science Log #3"
+author: "Rrustem Sallauka"
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+## Pixar Films
+
+For small datasets like these adding them to git is not a problem.
+```{r}
+library(tidyverse)
+```
+
+    Load the `pixar_films` dataset into R. Clean the dataset by removing
+    films without a title. Inspect the variable `film_rating`. What are
+    the possible values and what do they mean? Create a factor variable
+    for the film rating. Why is this appropriate?
+```{r}
+pixar_films <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-03-11/pixar_films.csv')
+pixar_films <- pixar_films %>% drop_na(film)
+pixar_films$film_rating <- factor(pixar_films$film_rating, exclude = NULL)
+```
+
+The possible values are G and PG. The rating based on Motion Picture Association (MPA) film rating system. 
+G: General Audiences
+PG: Parental Guidance Suggested
+
+film_rating is a categorical variable,because it has a fixed and known set of possible values, which when we transform can help us analising and vizualising
+<!-- -->
+
+    Inspect the film titles manually. Which films form a film series? A
+    film series can be identified by a common word in the titles of the
+    films, often in conjunction with a number in the title,
+    e.g. "Despicable Me" and "Despicable Me 2". Create a dataframe which
+    displays a list of the different series with the titles of the films
+    and how many films belong to the series. Output the dataframe.
+
+Cars, Toy Story, Incredibles, Finding Nemo 
+```{r}
+film_series <- pixar_films %>%
+  filter(str_detect(film, "Cars") | 
+         str_detect(film, "Toy Story") | 
+         str_detect(film, "Incredibles") | 
+         str_detect(film, "Finding")| 
+         str_detect(film, "Monsters")) %>% mutate(
+           series = case_when(
+         str_detect(film, "Cars") ~ "Cars" , 
+         str_detect(film, "Toy Story") ~ "Toy Story", 
+         str_detect(film, "Incredibles") ~ "Incredibles", 
+         str_detect(film, "Finding") ~ "Finding", 
+         str_detect(film, "Monsters") ~ "Monsters")
+         )
+film_series <- film_series %>% group_by(series) %>% mutate(count = n()) 
+
+film_series
+```
+
+
+    Load the `public_response` dataframe into R. Convert the
+    `cinema_score` variable into a factor while ensuring the factor
+    levels are defined in ascending order, from the lowest to the
+    highest score. Combine `public_response` with the `pixar_films`
+    dataset using an appropriate merge variable.
+```{r}
+public_response <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-03-11/public_response.csv')
+
+public_response$cinema_score <- factor(public_response$cinema_score, levels = c("A-","A","A+"), exclude = NULL, ordered = TRUE)
+public_pixar <- merge(film_series, public_response, by = "film")
+```
+
+
+    Choose one of the variables representing the public response and
+    create a bar plot for the films belonging to a series. Here are the
+    details of the plot:
+
+    -   The film series are represented on the x-axis.
+    -   Your chosen public response variable is displayed on the y-axis.
+    -   Each film in the series is represented as a separate bar. Bars
+        are grouped by film under their respective series on the x-axis.
+        Order the bars within a series according to the release date of
+        the films.
+    -   A title and axis labels for context.
+
+    What do you notice when comparing the scores of the films in a
+    series? Do you see any patterns?
+```{r}
+ggplot(public_pixar <- public_pixar %>% mutate(release_date = as.Date(release_date)),
+  aes(x = reorder(film, release_date), y = critics_choice, fill = film)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~series, scales = "free_x") +
+  labs(
+    title = "Critics Choice for Pixar Film Series",
+    x = "Film Title",
+    y = "Critics Choice Score"
+  ) +
+  theme_minimal()
+```
+
+The trends are similar, the first movie is ranked better by the critics then the following movies, in some series like Cars the score goes down. 
+
+## Open Analysis 
+
+```{r}
+energy_prices <- read_csv("data/Energy Prices - BP Statistics (2016).csv")
+```
+
+Put the name / title of the dataset and a link to it below.
+
+-   Dataset Name: Energy Prices - BP Statistics (2016)
+-   Link: <https://github.com/owid/owid-datasets/tree/master/datasets/Energy%20Prices%20-%20BP%20Statistics%20(2016)#energy-prices---bp-statistics-2016>
+
+    Come up with a (research) question you want to answer with the data
+    and briefly explain why you believe this is an interesting question
+    within one sentence. It should be a question that can be answered
+    with the dataset and using R.
+    How have energy prices changed over time?
+    
+    Use R to answer your chosen question. Please limit your analysis to
+    the functions and techniques we have covered so far in the course.
+    You are **not expected** to use advanced statistical models or
+    external packages which haven't been introduced.
+
+```{r}
+energy_prices <- energy_prices %>% pivot_longer(cols = -c(Entity,Year),names_to = "source", values_to = "price")
+
+energy_prices
+```    
+    
+    Create a meaningful plot / figure with the dataset. Make sure to
+    provide a figure caption (via the chunk options / Rmarkdown) and
+    correctly label the figure.
+```{r}
+ggplot(
+  energy_prices,
+  aes(
+    x = Year,
+    y = price,
+    colour = source
+  )
+) + geom_line() + labs(
+  title = "How have energy prices changed over time?",
+  x = "Year",
+  y = "Price",
+  color = "Source"
+)
+```

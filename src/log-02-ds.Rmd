@@ -1,0 +1,235 @@
+---
+title: "Data Science Log #2"
+author: "Rrustem Sallauka"
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+## Linear Regression
+
+```{r}
+library(tidyverse)
+library(distill)
+library(knitr)
+df_men <- read_csv("https://raw.githubusercontent.com/thomascamminady/LeTourDataSet/master/data/TDF_Riders_History.csv")
+df_women <- read_csv("https://raw.githubusercontent.com/thomascamminady/LeTourDataSet/master/data/TDFF_Riders_History.csv")
+```
+
+    Create a variable that, for each male rider, calculates the total
+    distance they participated in across all years. Then, show the top
+    10 riders who covered the most distance. For each rider, calculate
+    the average distance they participated in per year. Then, create a
+    variable that is 1 if the rider's average distance is above the
+    overall average across all riders, and 0 otherwise.
+
+```{r}
+df_men <- df_men %>% group_by(Rider) %>% mutate(distance = sum(`Distance (km)`))
+```
+
+
+```{r}
+df_men %>% select(Rider,distance) %>% arrange(distance) %>% head(10) %>% knitr::kable(caption = "The top
+    10 riders who covered the most distance")
+```
+
+```{r}
+df_men <- df_men %>% group_by(Rider) %>% mutate(avg = sum(`Distance (km)`)/n_distinct(Year))
+
+df_men <- df_men %>% ungroup(Rider) %>% mutate(high = ifelse(avg > mean(avg),1,0))
+```
+
+    Run a linear regression using each male rider's average distance as
+    the **dependent variable**. Use the following four **independent
+    variables**: • The first year they participated (first_year) • The
+    total number of participations (num_participations) • Their average
+    total race time in hours (avg_total_hours) • A binary variable
+    is_2020_rider that is 1 if they ever rode in 2020, otherwise 0
+    
+```{r}
+df_men <- df_men %>% group_by(Rider) %>% mutate(first_year = min(Year),
+                            num_participations = n(), 
+                            avg_total_hours = (((sum(TotalSeconds)/60/60)/ n_distinct(Year))),
+                            is_2020_rider = if_else(Year == 2020, 1, 0)) 
+
+model <- lm(avg ~ first_year + num_participations + avg_total_hours + is_2020_rider, data = df_men)
+model
+```
+
+
+    Use the appropriate easystats package to automatically generate a
+    report of the model you created.
+
+```{r}
+library(easystats)
+report(model)
+```
+
+    Choose one numerical and one non-numerical independent variable and
+    interpret the regression coefficients.
+    
+numerical: first_year, suggests a consistent decline over time, with each year associated with a reduction in the dependent variable,indicating a downward trend
+
+non numerical: is_2020_rider, being a 2020 rider is linked to slightly higher average values, possibly reflecting specific circumstances
+
+    Now try to interpret these coefficients substantively. Please note,
+    that there is no absolute truth here and we will give points for
+    good reasoning.
+    
+first_year: Over the years the average metric has declined by about 12.5 units per year. This could suggest that factors such as aging participants, or changing conditions had negatively impact
+
+is_2020_rider: Riders from 2020 have a statistically significant higher average. This could be reault of unique circumstances of that year—perhaps increased motivation due to external factors, like Covid
+
+
+    Visualize your model results in both, a residual plot and a
+    coefficient plot. Describe what you see in one sentence each.
+```{r}
+plot(model, which = 1)
+```
+The residuals are scattered around the horizontal line at zero, with no clear pattern, indicating that the model fits the data reasonably well
+
+```{r}
+library(coefplot)
+
+coefplot(
+  model,
+  intercept = F,
+  errorbars = T,
+  x.label = "Coefficient Estimate",
+  y.label = "Independent Variables"
+)
+
+```
+The coefficient for first_year is large negative, suggesting a strong influence on the dependent variable, while other coefficients are close to zero, indicating minimal impact
+
+## Logistic Regression
+
+In this exercise we will use the `House Sales in King County, USA`
+dataset, which includes real property data for residential homes sold
+between May 2014 and May 2015. The dataset is uploaded to moodle and
+called `kc_house_data.csv`.
+
+    Load the data into R and create a new binary variable that indicates
+    whether the price of a house is above average or not, based on the
+    price variable. It should be 1 if the price is above the average,
+    and 0 otherwise. This will serve as the dependent variable for the
+    logistic regression.
+
+```{r} 
+library(readr)
+library(dplyr)
+
+kc <- read_csv("data/kc_house_data.csv")
+```
+
+```         
+## Rows: 21613 Columns: 21
+## ── Column specification ────────────────────────────────────────────────────────
+## Delimiter: ","
+## chr   (1): id
+## dbl  (19): price, bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterf...
+## dttm  (1): date
+## 
+## ℹ Use `spec()` to retrieve the full column specification for this data.
+## ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.
+```
+
+``` {r}
+# Inspect
+head(kc, 10)
+```
+
+```         
+## # A tibble: 10 × 21
+##    id         date                 price bedrooms bathrooms sqft_living sqft_lot
+##    <chr>      <dttm>               <dbl>    <dbl>     <dbl>       <dbl>    <dbl>
+##  1 7129300520 2014-10-13 00:00:00 2.22e5        3      1           1180     5650
+##  2 6414100192 2014-12-09 00:00:00 5.38e5        3      2.25        2570     7242
+##  3 5631500400 2015-02-25 00:00:00 1.80e5        2      1            770    10000
+##  4 2487200875 2014-12-09 00:00:00 6.04e5        4      3           1960     5000
+##  5 1954400510 2015-02-18 00:00:00 5.10e5        3      2           1680     8080
+##  6 7237550310 2014-05-12 00:00:00 1.23e6        4      4.5         5420   101930
+##  7 1321400060 2014-06-27 00:00:00 2.57e5        3      2.25        1715     6819
+##  8 2008000270 2015-01-15 00:00:00 2.92e5        3      1.5         1060     9711
+##  9 2414600126 2015-04-15 00:00:00 2.29e5        3      1           1780     7470
+## 10 3793500160 2015-03-12 00:00:00 3.23e5        3      2.5         1890     6560
+## # ℹ 14 more variables: floors <dbl>, waterfront <dbl>, view <dbl>,
+## #   condition <dbl>, grade <dbl>, sqft_above <dbl>, sqft_basement <dbl>,
+## #   yr_built <dbl>, yr_renovated <dbl>, zipcode <dbl>, lat <dbl>, long <dbl>,
+## #   sqft_living15 <dbl>, sqft_lot15 <dbl>
+```
+
+```{r}
+kc <- kc %>% mutate(isexp = if_else(price > mean(price),1,0))
+```
+
+
+    Select at least 3 variables that you would like to include in a
+    logistic regression on your newly created variable. Make a case for
+    each variable why it should be included.
+    
+- sqft_living: larger living areas usually have a higher price  
+- condition: the state of the house directly influences its market value
+- yr_built:  older houses may be valued differently compared to newer constructions
+  
+    Run the logistic regression with your 3 chosen independent variables
+    and the dependent variable created in a).
+```{r}
+model2 <- glm(isexp ~ sqft_living + condition + yr_built, data = kc, family = binomial())
+model2
+```
+
+    Use the appropriate easystats package to automatically generate a
+    report of the model you created, use the correct function to
+    generate a *shorter version* of this report.
+
+```{r}
+library(easystats)
+report(model2) %>% summary()
+```
+
+
+    Interpret the coefficient for one independent variable of your
+    choice in the logistic regression.
+    
+Better condition indicates statistically significant higher prices
+
+    Create a plot of your choice illustrating one of the effects you saw
+    in the logistic regression. Briefly explain how your plot relates to
+    the logistic regression.
+```{r}
+coefplot(
+  model2,
+  intercept = F,
+  errorbars = T,
+  x.label = "Coefficient Estimate",
+  y.label = "Independent Variables"
+)
+
+```
+We see that condition has a strong influence, while sqft_living has a low influence on the dependent variable and 
+yr_build has a surprisingly negative influence on the variable.
+
+## Python 
+
+```{r}
+reticulate::py_install("pandas")
+```
+
+    
+```{python}
+import pandas as pd 
+
+df_men = pd.read_csv("https://raw.githubusercontent.com/thomascamminady/LeTourDataSet/master/data/TDF_Riders_History.csv")
+df_women = pd.read_csv("https://raw.githubusercontent.com/thomascamminady/LeTourDataSet/master/data/TDFF_Riders_History.csv")
+
+print(df_men.head(10))
+```
+
+```{python}
+df_men['distance'] = df_men.groupby('Rider')['Distance (km)'].transform('sum')
+
+df_men['avg'] = df_men['Rider'].map(df_men.groupby('Rider')['Distance (km)'].sum() /df_men.groupby('Rider')['Year'].nunique())
+
+df_men["high"] = (df_men["avg"] > df_men["avg"].mean()).astype(int)
+```
+

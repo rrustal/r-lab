@@ -1,0 +1,247 @@
+---
+title: "Data Science Log #4"
+author: "Rrustem Sallauka"
+date: "`r Sys.Date()`"
+output: html_document
+subtitle: Fortgeschrittene Statistische Software für NF
+---
+
+## Discovering Barcelona
+
+We’re planning a weekend city trip around Europe and want to use geospatial data science tools to support our planning. First stop is Barcelona. We’ll work with the {osmdata} and {tmap} packages.
+
+```{r}
+library(osmdata)
+library(tmap)
+library(tidyverse)
+```
+
+
+Use the appropriate function from `{osmdata}` to extract both the bounding box matrix and the polygon format for "Barcelona". Briefly explain in 1–2 sentences why we might want to use one over the other in different mapping or data extraction scenarios. 
+
+Note: When using getbb(..., format_out = "sf_polygon"), the result is a list containing both "polygon" and "multipolygon" formats. Select the "multipolygon" object for better accuracy in boundary mapping.
+
+```{r}
+bb_a <- getbb("Barcelona")
+bb <- getbb("Barcelona", format_out = "sf_polygon")
+```
+
+While a bounding box is only defined by two points, a polygon can have an arbitrary number of points and therefore define much more accurately an object on an image
+
+A: The matrix format is simpler and more efficient for quick bounding-box queries or base maps, while the polygon format provides more accurate and detailed city boundaries, which is useful for precise spatial operations or when visual accuracy matters in mapping.
+
+Create two different plots of the city outline using the polygon format: one interactive and one non-interactive. Customize the plots so that:
+  - The borders are shown in "darkblue"
+  - You add a title to each map using tm_layout
+  - The interactive map allows zooming and panning
+  
+```{r}
+tmap_mode("plot")
+
+tm_shape(bb$multipolygon) +
+  tm_borders(col = "darkblue") +
+  tm_layout(main.title = "Barcelona") 
+```
+
+```{r}
+tmap_mode("view")
+
+tm_shape(bb$multipolygon) +
+  tm_borders("darkblue") +
+  tm_layout(main.title = "Barcelona")
+```
+
+Customize the map so that:
+  - Museums are shown as red dots.
+  - You use tm_basemap("OpenStreetMap") for context.
+	-	You add a title indicating it’s a map of museums.
+```{r}
+bar_museum <- opq("Barcelona") %>% 
+  add_osm_feature(key = "museum") %>% 
+  osmdata_sf()
+
+
+tmap_mode("plot")
+
+tm_shape(bar_museum$osm_points) +
+  tm_basemap("OpenStreetMap") +
+  tm_dots(id = "name", fill = "red", col = "red") +
+  tm_layout(main.title = "Museums in Barcelona")
+```
+
+
+Filter the museums to only those that have a name. Then, use {leaflet} to create an interactive map that displays a popup with each museum’s name when clicked. 
+
+Ensure the map:
+	-	Centers over Barcelona.
+	-	Uses a light basemap (e.g., CartoDB.Positron).
+	
+```{r}
+library(leaflet)
+bar_museum_unique <- bar_museum$osm_points %>% 
+  filter(!is.na(name))
+
+leaflet(data = bar_museum_unique) %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(lng = 2.17, lat = 41.39, zoom = 13) %>%
+  addMarkers(popup = ~as.character(name))
+```
+
+
+## Finding Accommodation in Berlin
+
+Oops, we spent too much money in Barcelona. On our next stop in Berlin, we'd like to plan more budget-friendly and find a simple accommodation option such as a hostel. For this, we'll be using OpenStreetMaps.
+
+Search for the correct tag to identify *affordable accommodation* in OpenStreetMaps. Write down the tag below and add the URL to its OSMWiki page. 
+
+key = "tourism", value = "hostel"
+https://wiki.openstreetmap.org/wiki/Tag:tourism%3Dhostel
+
+
+Write an {osmdata} query that downloads all hostels in Berlin using a bounding box. How many hostels are there in Berlin?
+Explain how you interpret points, polygons, and lines in the query results. If no lines are returned (as is often the case for buildings), explain why this is expected. 
+
+```{r}
+berlin <- opq("Berlin") %>%
+  add_osm_feature(key = "tourism", value = "hostel") %>%
+  osmdata_sf()
+
+berlin$osm_points %>% nrow()
+```
+
+Since there are quite a few hostels, we want to limit our search a bit. How many of the hostels have a name? How many also include information on the number of beds? 
+
+```{r}
+berlin_hostel <- berlin$osm_points %>% filter(!is.na(name)) %>% nrow()
+print(berlin_hostel)
+```
+
+```{r}
+berlin_hostel_beds <- berlin$osm_points %>% filter(!is.na(beds)) %>% nrow()
+print(berlin_hostel_beds)
+```
+
+- 3 have information about the numbers of beds
+
+Use tm_dots() to plot the hostels in Berlin on an *interactive* map 
+
+	-	Color the dots based on the type of internet access provided by each hostel (internet_access). 
+	-	Use the hostel’s name as the ID to display when hovering over a dot on the map. 
+	-	Choose an appropriate color palette and	add a title to the map indicating that it shows hostels in Berlin by internet access.
+	
+```{r}
+tmap_mode("view")
+
+tm_shape(berlin$osm_points) +
+  tm_basemap("OpenStreetMap") +
+  tm_dots(id = "name", col = "internet_access", palette = "Dark2") +
+  tm_layout(main.title = "Hostels in Berlin by Internet Access")
+```
+
+
+Your grandma, who lives in Berlin, just called and said she wanted to come visit you at the hostels. Grandma is struggling with walking up stairs. Create a bar chart using {ggplot2} showing wheelchair-accessibility from the named hostels. You can use str() for the variable you saved in the previous exercise to find the proper variable for wheelchair-accessible hostels. Filter the dataset to include only hostels where wheelchair is "yes", "limited", or "no". Then, represent the following:
+	-	"yes" for full accessibility,
+	-	"limited" for limited accessibility,
+	-	"no" for no accessibility.
+
+```{r}
+berlin_wh <- berlin$osm_points %>% filter(!is.na(wheelchair)) %>% mutate(wheelchair_acc = case_when(
+  wheelchair == "yes" ~ "full accessibility",
+  wheelchair == "limited" ~ "limited accessibility",
+  wheelchair == "no" ~ "no accessibility"
+))
+
+ggplot(
+  berlin_wh,
+  aes(
+    x = wheelchair_acc
+  )
+) + geom_bar() + labs(
+  title = "Wheelchair-Accessibility in Hostels",
+  x = "Accessibility"
+)
+```
+
+
+```{r}
+berlin$osm_points %>% filter(name == "A&O Hotel and Hostel Berlin Mitte")
+```
+
+## It's coming home 
+
+
+Load the `{matches.csv}` file from the `{data}` folder. Visualize how the number of total goals scored per game has evolved over time. Create a nice and complete plot and interpret what you see in one or two sentences. 
+
+```{r}
+matches <- read_csv("data/matches.csv")
+matches_goal <- matches %>% mutate(totalgoals = home_team_score + away_team_score) 
+
+matches_goal <- matches_goal %>% group_by(season) %>% summarise(seasongoals = mean(totalgoals))
+
+
+avggoal <- ggplot(matches_goal,
+       aes(
+         x = season,
+         y = seasongoals
+       )) + geom_line() + labs(
+         title = "Number of Total Goals Scored per Game has Evolved over Time",
+         x = "Year",
+         y = "Average Goals per game in a season"
+       )
+avggoal
+```
+The number of goals per match has decreased significantly in years. The reason might be the introduction of new rules and new tactics.
+
+Now create an animated version of your plot and include the GIF in your HTML 
+
+```{r}
+library(gganimate)
+library(ggplot2)
+library(gifski)
+
+gg_anim_avgg <-avggoal + 
+  transition_reveal(season) +
+  labs(title = "Goals per Game") +
+    view_follow(fixed_y = TRUE)
+
+anim_avgg <- animate(gg_anim_avgg, renderer = gifski_renderer(), units="px", res=150, duration=10)
+
+anim_save("fig/Goal.gif", animation = anim_avgg)
+```
+![](fig/Goal.gif)
+
+
+
+Load the `{standings.csv}` dataset. We will now analyze how Liverpool FC has performed over the years. Create an animated plot that contains the number of points and the final placement of LFC for every year they have participated in professional football. The exact visualization is up to you.
+
+```{r}
+standings <- read_csv("data/standings.csv")
+
+standings <- standings %>% filter(team_name == "Liverpool")
+
+gg_anim_lfc <- ggplot(standings) +
+  geom_line(aes(x = season, y = points)) +  
+  geom_point(aes(x = season, y = points, color = position)) +
+  transition_reveal(season) +
+  labs(title = "LFC Performance", y = "Points", x = "Season") +
+  view_follow(fixed_y = TRUE)
+
+animate(gg_anim_lfc, renderer = gifski_renderer(), units = "px", res = 150, duration = 10)
+
+anim_save("fig/LFC_performance.gif")
+```
+
+Adjust the velocity of your animations. Also change one of your axes with respect to being fixed or not. 
+```{r}
+gg_anim_lfc_V <- ggplot(standings) +
+  geom_line(aes(x = season, y = points)) +  
+  geom_point(aes(x = season, y = points, color = position)) +
+  transition_reveal(season) +
+  labs(title = "LFC Performance", y = "Points", x = "Season") +
+  view_follow(fixed_y = FALSE, fixed_x = TRUE)
+
+animate(gg_anim_lfc_V,renderer = gifski_renderer(),units = "px",res = 150,duration = 10)
+
+anim_save("fig/LFC_performance2.gif")
+```
+
